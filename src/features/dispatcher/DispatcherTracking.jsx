@@ -5,6 +5,8 @@ import Card from '../../components/Card'
 import Header from '../../components/Header'
 import TrackingCode from '../../components/TrackingCode'
 import { C, SC } from '../../styles/theme'
+import { AlertTriangle } from 'lucide-react'
+import { getParcelStatusStyle } from '../../domain/statusStyles'
 
 export default function DispatcherTracking({parcels}) {
   const [sel,setSel]=useState(parcels[2]);

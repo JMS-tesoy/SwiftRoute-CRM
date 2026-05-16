@@ -6,6 +6,8 @@ import Card from '../../components/Card'
 import Header from '../../components/Header'
 import TrackingCode from '../../components/TrackingCode'
 import { C, SC } from '../../styles/theme'
+import { AlertTriangle } from 'lucide-react'
+import { getParcelStatusStyle } from '../../domain/statusStyles'
 
 export default function MerchantBookingHistory({parcels,merchantId}) {
   const [fs,setFs]=useState("all");

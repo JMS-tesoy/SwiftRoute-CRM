@@ -5,6 +5,7 @@ import Card from '../../components/Card'
 import Header from '../../components/Header'
 import TrackingCode from '../../components/TrackingCode'
 import { C, SC } from '../../styles/theme'
+import { getParcelStatusStyle } from '../../domain/statusStyles'
 
 const SA = {
   assigned:   [{n:"picked_up", l:"Mark Picked Up",   v:"pri", ic:Package}],

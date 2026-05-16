@@ -11,6 +11,10 @@ import MerchantBilling from './features/merchant/MerchantBilling'
 import MerchantBookingHistory from './features/merchant/MerchantBookingHistory'
 import MerchantNewBooking from './features/merchant/MerchantNewBooking'
 import { C, FONTS } from './styles/theme'
+import {
+  PARCEL_STATUS,
+  canTransitionParcelStatus,
+} from './domain/parcelStatus'
 
 const VIEWS = {
   overview:DispatcherOverview, bookings:DispatcherBookings, tracking:DispatcherTracking, drivers:DispatcherDrivers,
@@ -34,9 +38,47 @@ export default function App() {
   const login=r=>{setAuth(r);setView(DEFAULT_VIEW[r.id]||"overview");};
   const logout=()=>{setAuth(null);setView("");};
 
-  const assign=(pid,did)=>{const d=drivers.find(x=>x.id===did);setParcels(p=>p.map(x=>x.id===pid?{...x,status:"assigned",dId:did,driver:d?.name||""}:x));};
-  const statusUp=(pid,ns)=>setParcels(p=>p.map(x=>x.id===pid?{...x,status:ns}:x));
-  const addParcel=b=>{setParcels(p=>[{id:`P${Date.now()}`,trk:b.trk,merchant:b.merchantName,mId:b.merchantId,recipient:b.recipient,phone:b.phone,addr:b.address,status:"pending",driver:null,dId:null,wt:parseFloat(b.weight)||1,amt:Math.max(150,Math.round((parseFloat(b.weight)||1)*60+110)),ts:new Date().toTimeString().slice(0,5),notes:b.notes},...p]);};
+ 
+  const assign = (pid, did) => {
+  const driver = drivers.find((item) => item.id === did)
+
+  setParcels((currentParcels) =>
+    currentParcels.map((parcel) => {
+      if (parcel.id !== pid) return parcel
+
+      if (!canTransitionParcelStatus(parcel.status, PARCEL_STATUS.ASSIGNED)) {
+        return parcel
+      }
+
+      return {
+        ...parcel,
+        status: PARCEL_STATUS.ASSIGNED,
+        dId: did,
+        driver: driver?.name || '',
+      }
+    }),
+  )
+}
+
+const statusUp = (pid, nextStatus) => {
+  setParcels((currentParcels) =>
+    currentParcels.map((parcel) => {
+      if (parcel.id !== pid) return parcel
+
+      if (!canTransitionParcelStatus(parcel.status, nextStatus)) {
+        return parcel
+      }
+
+      return {
+        ...parcel,
+        status: nextStatus,
+      }
+    }),
+  )
+}
+
+  
+  const addParcel=b=>{setParcels(p=>[{id:`P${Date.now()}`,trk:b.trk,merchant:b.merchantName,mId:b.merchantId,recipient:b.recipient,phone:b.phone,addr:b.address,status: PARCEL_STATUS.PENDING,driver:null,dId:null,wt:parseFloat(b.weight)||1,amt:Math.max(150,Math.round((parseFloat(b.weight)||1)*60+110)),ts:new Date().toTimeString().slice(0,5),notes:b.notes},...p]);};
 
   if(!auth) return <Login onLogin={login}/>;
 
