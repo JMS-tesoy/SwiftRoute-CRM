@@ -1,6 +1,10 @@
 # SwiftRoute CRM — Demo (Vite + React)
 
-Quick start
+## Screenshot
+
+![SwiftRoute CRM Homepage](docs/screenshots/Homepage.png)
+
+## Quick start
 
 1. Install dependencies
 
@@ -18,7 +22,7 @@ pnpm install
 # using npm
 npm run dev
 
-# using pnpm
+# or using pnpm
 pnpm run dev
 ```
 
@@ -29,24 +33,24 @@ pnpm run dev
 npm run build
 npm run preview
 
-# using pnpm
+# or using pnpm
 pnpm run build
 pnpm run preview
 ```
 
-Files of interest
+## Files of interest
 
 - `package.json`
 - `src/App.jsx`
 - `src/main.jsx`
 
-CI
+## CI
 
-- A GitHub Actions workflow is added at `.github/workflows/ci.yml` to run `pnpm install` and `pnpm run build` on push and pull requests.
+A GitHub Actions workflow is added at `.github/workflows/ci.yml` to run `pnpm install` and `pnpm run build` on push and pull requests.
 
-Debugging borders
+## Debugging borders
 
-- To highlight every element's outline in the running app (temporary debug), open the dev server with the `debugBorders` query parameter:
+To highlight every element's outline in the running app temporarily, open the dev server with the `debugBorders` query parameter:
 
 ```bash
 # Start dev server
@@ -56,8 +60,8 @@ pnpm run dev
 http://localhost:5173/?debugBorders=1
 ```
 
-This injects a temporary red outline around every element (does not change layout). Remove the query parameter to disable.
+This injects a temporary red outline around every element and does not change layout. Remove the query parameter to disable it.
 
-Notes
+## Notes
 
-- This is a small demo converted to a Vite React app. Use `pnpm install` then `pnpm run dev` to preview locally.
+This is a small demo converted to a Vite React app. Use `pnpm install`, then `pnpm run dev` to preview locally.
