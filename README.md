@@ -10,9 +10,6 @@ The app is designed to demonstrate the core business flow of a small courier, de
 
 ![SwiftRoute CRM Homepage](docs/screenshots/homepage.png)
 
-> Make sure the screenshot file exists at:
->
-> `docs/screenshots/homepage.png`
 
 ---
 
