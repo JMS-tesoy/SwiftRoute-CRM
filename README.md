@@ -8,7 +8,8 @@ The app is designed to demonstrate the core business flow of a small courier, de
 
 ## Screenshot
 
-![SwiftRoute CRM Homepage](docs/screenshots/homepage.png)
+![SwiftRoute CRM Homepage](docs/screenshots/Homepage.png)
+
 
 
 ---
