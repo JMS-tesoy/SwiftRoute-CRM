@@ -1,4 +1,4 @@
-import { useMemo, useState } from 'react'
+import { useEffect, useState } from 'react'
 import {
   ArrowRight,
   BarChart3,
@@ -11,76 +11,646 @@ import {
   Truck,
   Zap,
 } from 'lucide-react'
-import { DEMO_ACCOUNTS } from '../../data/demoAccounts'
+import {
+  validateEmail,
+  validateMerchantName,
+  validateName,
+  validatePassword,
+  validatePasswordConfirmation,
+} from '../../domain/authValidation'
+import {
+  createPasswordResetCode,
+  loginWithEmailPassword,
+  registerMerchantAccount,
+  resetPassword,
+} from '../../services/supabaseAuthService'
 import { C, FONTS } from '../../styles/theme'
 
-function safeAccountForSession(account) {
-  const { password, icon, desc, color, label, ...sessionAccount } = account
+function Field({
+  label,
+  icon,
+  type = 'text',
+  value,
+  onChange,
+  placeholder,
+  autoComplete,
+}) {
+  const Icon = icon
 
-  return {
-    ...sessionAccount,
-    displayName: account.name,
-  }
+  return (
+    <div style={{ marginBottom: 14 }}>
+      <label
+        style={{
+          display: 'block',
+          color: C.muted,
+          fontSize: 11,
+          fontWeight: 800,
+          marginBottom: 7,
+          textTransform: 'uppercase',
+          letterSpacing: '0.08em',
+        }}
+      >
+        {label}
+      </label>
+
+      <div
+        style={{
+          display: 'flex',
+          alignItems: 'center',
+          gap: 9,
+          background: C.navy,
+          border: C.border ? `1px solid ${C.border}` : 'none',
+          borderRadius: 10,
+          padding: '11px 12px',
+        }}
+      >
+        {Icon && <Icon size={15} color={C.muted} />}
+
+        <input
+          value={value}
+          onChange={(event) => onChange(event.target.value)}
+          type={type}
+          placeholder={placeholder}
+          autoComplete={autoComplete}
+          style={{
+            flex: 1,
+            background: 'transparent',
+            border: 'none',
+            outline: 'none',
+            color: C.text,
+            fontSize: 13,
+            fontFamily: 'inherit',
+            minWidth: 0,
+          }}
+        />
+      </div>
+    </div>
+  )
 }
 
-function getAccountKey(account) {
-  return `${account.role}-${account.userId}`
+function MessageBox({ type = 'info', children }) {
+  const isError = type === 'error'
+  const isSuccess = type === 'success'
+
+  const color = isError ? '#fecaca' : isSuccess ? '#bbf7d0' : C.muted
+  const border = isError
+    ? 'rgba(239, 68, 68, 0.35)'
+    : isSuccess
+      ? 'rgba(34, 197, 94, 0.35)'
+      : C.border
+  const background = isError
+    ? 'rgba(239, 68, 68, 0.1)'
+    : isSuccess
+      ? 'rgba(34, 197, 94, 0.1)'
+      : C.navy
+
+  return (
+    <div
+      style={{
+        background,
+        border: border ? `1px solid ${border}` : 'none',
+        color,
+        borderRadius: 10,
+        padding: '10px 12px',
+        fontSize: 12,
+        fontWeight: 700,
+        lineHeight: 1.5,
+        marginBottom: 14,
+      }}
+    >
+      {children}
+    </div>
+  )
 }
 
 export default function Login({ onLogin }) {
-  const defaultAccount = DEMO_ACCOUNTS[0]
-
-  const [selectedAccountKey, setSelectedAccountKey] = useState(getAccountKey(defaultAccount))
-  const [email, setEmail] = useState(defaultAccount.email)
-  const [password, setPassword] = useState(defaultAccount.password)
+  const [mode, setMode] = useState('login')
+  const [email, setEmail] = useState('')
+  const [password, setPassword] = useState('')
   const [error, setError] = useState('')
+  const [success, setSuccess] = useState('')
+  const [isSubmitting, setIsSubmitting] = useState(false)
 
-  const selectedAccount = useMemo(() => {
-    return (
-      DEMO_ACCOUNTS.find((account) => getAccountKey(account) === selectedAccountKey) ||
-      defaultAccount
-    )
-  }, [selectedAccountKey, defaultAccount])
+  const [registerName, setRegisterName] = useState('')
+  const [registerMerchantName, setRegisterMerchantName] = useState('')
+  const [registerEmail, setRegisterEmail] = useState('')
+  const [registerPassword, setRegisterPassword] = useState('')
+  const [registerConfirmPassword, setRegisterConfirmPassword] = useState('')
 
-  const SelectedAccountIcon = selectedAccount.icon
+  const [forgotEmail, setForgotEmail] = useState('')
+  const [resetEmail, setResetEmail] = useState('')
+  const [resetPasswordValue, setResetPasswordValue] = useState('')
+  const [resetConfirmPassword, setResetConfirmPassword] = useState('')
 
-  const groupedAccounts = useMemo(() => {
-    return DEMO_ACCOUNTS.reduce((groups, account) => {
-      if (!groups[account.role]) groups[account.role] = []
-      groups[account.role].push(account)
-      return groups
-    }, {})
+  useEffect(() => {
+    const url = new URL(window.location.href)
+    const isRecovery =
+      url.hash.includes('type=recovery') || url.searchParams.get('type') === 'recovery'
+
+    if (isRecovery) {
+      setMode('reset')
+      setSuccess('Create a new password to finish your account recovery.')
+    }
   }, [])
 
-  const selectAccount = (account) => {
-    setSelectedAccountKey(getAccountKey(account))
-    setEmail(account.email)
-    setPassword(account.password)
+  const clearMessages = () => {
     setError('')
+    setSuccess('')
   }
 
-  const handleSubmit = (event) => {
+  const switchMode = (nextMode) => {
+    setMode(nextMode)
+    clearMessages()
+  }
+
+  const handleSubmit = async (event) => {
     event.preventDefault()
+    clearMessages()
+    setIsSubmitting(true)
 
-    const normalizedEmail = email.trim().toLowerCase()
-
-    const matchedAccount = DEMO_ACCOUNTS.find(
-      (account) =>
-        account.email.toLowerCase() === normalizedEmail &&
-        account.password === password,
-    )
-
-    if (!matchedAccount) {
-      setError('Invalid demo email or password.')
+    const emailError = validateEmail(email)
+    if (emailError) {
+      setError(emailError)
+      setIsSubmitting(false)
       return
     }
 
-    setError('')
-    onLogin(safeAccountForSession(matchedAccount))
+    if (!password) {
+      setError('Password is required.')
+      setIsSubmitting(false)
+      return
+    }
+
+    const result = await loginWithEmailPassword(email, password)
+    setIsSubmitting(false)
+
+    if (!result.ok) {
+      setError(result.error)
+      return
+    }
+
+    onLogin(result.user)
   }
 
-  const handleQuickEnter = () => {
-    onLogin(safeAccountForSession(selectedAccount))
+  const handleRegister = async (event) => {
+    event.preventDefault()
+    clearMessages()
+    setIsSubmitting(true)
+
+    const nameError = validateName(registerName)
+    const merchantNameError = validateMerchantName(registerMerchantName)
+    const emailError = validateEmail(registerEmail)
+    const passwordError = validatePassword(registerPassword, registerEmail)
+    const confirmError = validatePasswordConfirmation(
+      registerPassword,
+      registerConfirmPassword,
+    )
+
+    const firstError =
+      nameError || merchantNameError || emailError || passwordError || confirmError
+
+    if (firstError) {
+      setError(firstError)
+      setIsSubmitting(false)
+      return
+    }
+
+    const result = await registerMerchantAccount({
+      name: registerName,
+      merchantName: registerMerchantName,
+      email: registerEmail,
+      password: registerPassword,
+    })
+    setIsSubmitting(false)
+
+    if (!result.ok) {
+      setError(result.error)
+      return
+    }
+
+    if (result.needsEmailConfirmation) {
+      setSuccess('Account created. Check your email to verify your account before signing in.')
+      setMode('login')
+      setEmail(registerEmail)
+      setPassword('')
+      return
+    }
+
+    onLogin(result.user)
+  }
+
+  const handleForgotPassword = async (event) => {
+    event.preventDefault()
+    clearMessages()
+    setIsSubmitting(true)
+
+    const emailError = validateEmail(forgotEmail)
+
+    if (emailError) {
+      setError(emailError)
+      setIsSubmitting(false)
+      return
+    }
+
+    const result = await createPasswordResetCode(forgotEmail)
+    setIsSubmitting(false)
+
+    if (!result.ok) {
+      setError(result.error)
+      return
+    }
+
+    setResetEmail(forgotEmail)
+    setSuccess(result.message)
+  }
+
+  const handleResetPassword = async (event) => {
+    event.preventDefault()
+    clearMessages()
+    setIsSubmitting(true)
+
+    const passwordError = validatePassword(resetPasswordValue, resetEmail)
+    const confirmError = validatePasswordConfirmation(
+      resetPasswordValue,
+      resetConfirmPassword,
+    )
+
+    const firstError = passwordError || confirmError
+
+    if (firstError) {
+      setError(firstError)
+      setIsSubmitting(false)
+      return
+    }
+
+    const result = await resetPassword({
+      email: resetEmail,
+      newPassword: resetPasswordValue,
+    })
+    setIsSubmitting(false)
+
+    if (!result.ok) {
+      setError(result.error)
+      return
+    }
+
+    window.history.replaceState({}, document.title, window.location.pathname)
+    setEmail(resetEmail)
+    setPassword('')
+    setMode('login')
+    setSuccess('Password reset successful. Sign in with your new password.')
+  }
+
+  const renderLoginForm = () => (
+    <form onSubmit={handleSubmit}>
+      <div style={{ marginBottom: 22 }}>
+        <div style={{ color: C.text, fontSize: 24, fontWeight: 900 }}>
+          Sign in
+        </div>
+        <div style={{ color: C.muted, fontSize: 13, marginTop: 6, lineHeight: 1.6 }}>
+          Enter your registered SwiftRoute account credentials.
+        </div>
+      </div>
+
+      <Field
+        label="Email"
+        icon={Mail}
+        value={email}
+        onChange={setEmail}
+        autoComplete="username"
+      />
+
+      <Field
+        label="Password"
+        icon={Lock}
+        value={password}
+        onChange={setPassword}
+        type="password"
+        autoComplete="current-password"
+      />
+
+      {success && <MessageBox type="success">{success}</MessageBox>}
+      {error && <MessageBox type="error">{error}</MessageBox>}
+
+      <button
+        type="submit"
+        disabled={isSubmitting}
+        style={{
+          width: '100%',
+          border: 'none',
+          borderRadius: 12,
+          padding: '12px 14px',
+          background: C.accent,
+          color: '#04111f',
+          fontSize: 13,
+          fontWeight: 900,
+          cursor: 'pointer',
+          fontFamily: 'inherit',
+          display: 'flex',
+          alignItems: 'center',
+          justifyContent: 'center',
+          gap: 8,
+        }}
+      >
+        {isSubmitting ? 'Signing In...' : 'Sign In'}
+        <ArrowRight size={15} />
+      </button>
+
+      <div
+        style={{
+          display: 'flex',
+          justifyContent: 'space-between',
+          gap: 10,
+          marginTop: 14,
+          flexWrap: 'wrap',
+        }}
+      >
+        <button
+          type="button"
+          onClick={() => switchMode('forgot')}
+          style={{
+            border: 'none',
+            background: 'transparent',
+            color: C.accent,
+            cursor: 'pointer',
+            fontSize: 12,
+            fontWeight: 700,
+            fontFamily: 'inherit',
+            padding: 0,
+          }}
+        >
+          Forgot password?
+        </button>
+
+        <button
+          type="button"
+          onClick={() => switchMode('register')}
+          style={{
+            border: 'none',
+            background: 'transparent',
+            color: C.accent,
+            cursor: 'pointer',
+            fontSize: 12,
+            fontWeight: 700,
+            fontFamily: 'inherit',
+            padding: 0,
+          }}
+        >
+          Register merchant account
+        </button>
+      </div>
+    </form>
+  )
+
+  const renderRegisterForm = () => (
+    <form onSubmit={handleRegister}>
+      <div style={{ marginBottom: 22 }}>
+        <div style={{ color: C.text, fontSize: 24, fontWeight: 900 }}>
+          Register merchant
+        </div>
+        <div style={{ color: C.muted, fontSize: 13, marginTop: 6, lineHeight: 1.6 }}>
+          Merchant self-registration is allowed. Dispatcher and driver accounts must be
+          created by the operations team.
+        </div>
+      </div>
+
+      <Field
+        label="Contact name"
+        value={registerName}
+        onChange={setRegisterName}
+        placeholder="Juan Dela Cruz"
+        autoComplete="name"
+      />
+
+      <Field
+        label="Merchant / Company name"
+        value={registerMerchantName}
+        onChange={setRegisterMerchantName}
+        placeholder="Example Trading Co."
+        autoComplete="organization"
+      />
+
+      <Field
+        label="Email"
+        icon={Mail}
+        value={registerEmail}
+        onChange={setRegisterEmail}
+        placeholder="ops@example.com"
+        autoComplete="email"
+      />
+
+      <Field
+        label="Password"
+        icon={Lock}
+        type="password"
+        value={registerPassword}
+        onChange={setRegisterPassword}
+        autoComplete="new-password"
+      />
+
+      <Field
+        label="Confirm password"
+        icon={Lock}
+        type="password"
+        value={registerConfirmPassword}
+        onChange={setRegisterConfirmPassword}
+        autoComplete="new-password"
+      />
+
+      <MessageBox>
+        Password rule: 10-72 characters, uppercase, lowercase, number, special
+        character, no spaces, and must not contain your email username.
+      </MessageBox>
+
+      {error && <MessageBox type="error">{error}</MessageBox>}
+      {success && <MessageBox type="success">{success}</MessageBox>}
+
+      <button
+        type="submit"
+        disabled={isSubmitting}
+        style={{
+          width: '100%',
+          border: 'none',
+          borderRadius: 12,
+          padding: '12px 14px',
+          background: C.success,
+          color: '#04111f',
+          fontSize: 13,
+          fontWeight: 900,
+          cursor: 'pointer',
+          fontFamily: 'inherit',
+        }}
+      >
+        {isSubmitting ? 'Creating Account...' : 'Create Merchant Account'}
+      </button>
+
+      <button
+        type="button"
+        onClick={() => switchMode('login')}
+        style={{
+          width: '100%',
+          border: C.border ? `1px solid ${C.border}` : 'none',
+          borderRadius: 12,
+          padding: '11px 14px',
+          background: C.navy,
+          color: C.text,
+          fontSize: 13,
+          fontWeight: 800,
+          cursor: 'pointer',
+          fontFamily: 'inherit',
+          marginTop: 10,
+        }}
+      >
+        Back to sign in
+      </button>
+    </form>
+  )
+
+  const renderForgotForm = () => (
+    <form onSubmit={handleForgotPassword}>
+      <div style={{ marginBottom: 22 }}>
+        <div style={{ color: C.text, fontSize: 24, fontWeight: 900 }}>
+          Forgot password
+        </div>
+        <div style={{ color: C.muted, fontSize: 13, marginTop: 6, lineHeight: 1.6 }}>
+          Enter your registered email. Supabase will send a password reset link to
+          your inbox.
+        </div>
+      </div>
+
+      <Field
+        label="Account email"
+        icon={Mail}
+        value={forgotEmail}
+        onChange={setForgotEmail}
+        placeholder="ops@example.com"
+        autoComplete="email"
+      />
+
+      {error && <MessageBox type="error">{error}</MessageBox>}
+      {success && <MessageBox type="success">{success}</MessageBox>}
+
+      <button
+        type="submit"
+        disabled={isSubmitting}
+        style={{
+          width: '100%',
+          border: 'none',
+          borderRadius: 12,
+          padding: '12px 14px',
+          background: C.accent,
+          color: '#04111f',
+          fontSize: 13,
+          fontWeight: 900,
+          cursor: 'pointer',
+          fontFamily: 'inherit',
+        }}
+      >
+        {isSubmitting ? 'Sending Email...' : 'Send Reset Email'}
+      </button>
+
+      <button
+        type="button"
+        onClick={() => switchMode('login')}
+        style={{
+          width: '100%',
+          border: C.border ? `1px solid ${C.border}` : 'none',
+          borderRadius: 12,
+          padding: '11px 14px',
+          background: C.navy,
+          color: C.text,
+          fontSize: 13,
+          fontWeight: 800,
+          cursor: 'pointer',
+          fontFamily: 'inherit',
+          marginTop: 10,
+        }}
+      >
+        Back to sign in
+      </button>
+    </form>
+  )
+
+  const renderResetForm = () => (
+    <form onSubmit={handleResetPassword}>
+      <div style={{ marginBottom: 22 }}>
+        <div style={{ color: C.text, fontSize: 24, fontWeight: 900 }}>
+          Reset password
+        </div>
+        <div style={{ color: C.muted, fontSize: 13, marginTop: 6, lineHeight: 1.6 }}>
+          Open the password reset link from your email, then create a new strict
+          password.
+        </div>
+      </div>
+
+      {success && <MessageBox type="success">{success}</MessageBox>}
+
+      <Field
+        label="New password"
+        icon={Lock}
+        type="password"
+        value={resetPasswordValue}
+        onChange={setResetPasswordValue}
+        autoComplete="new-password"
+      />
+
+      <Field
+        label="Confirm new password"
+        icon={Lock}
+        type="password"
+        value={resetConfirmPassword}
+        onChange={setResetConfirmPassword}
+        autoComplete="new-password"
+      />
+
+      {error && <MessageBox type="error">{error}</MessageBox>}
+
+      <button
+        type="submit"
+        disabled={isSubmitting}
+        style={{
+          width: '100%',
+          border: 'none',
+          borderRadius: 12,
+          padding: '12px 14px',
+          background: C.accent,
+          color: '#04111f',
+          fontSize: 13,
+          fontWeight: 900,
+          cursor: 'pointer',
+          fontFamily: 'inherit',
+        }}
+      >
+        {isSubmitting ? 'Resetting Password...' : 'Reset Password'}
+      </button>
+
+      <button
+        type="button"
+        onClick={() => switchMode('login')}
+        style={{
+          width: '100%',
+          border: C.border ? `1px solid ${C.border}` : 'none',
+          borderRadius: 12,
+          padding: '11px 14px',
+          background: C.navy,
+          color: C.text,
+          fontSize: 13,
+          fontWeight: 800,
+          cursor: 'pointer',
+          fontFamily: 'inherit',
+          marginTop: 10,
+        }}
+      >
+        Back to sign in
+      </button>
+    </form>
+  )
+
+  const renderCurrentForm = () => {
+    if (mode === 'register') return renderRegisterForm()
+    if (mode === 'forgot') return renderForgotForm()
+    if (mode === 'reset') return renderResetForm()
+    return renderLoginForm()
   }
 
   return (
@@ -153,7 +723,7 @@ export default function Login({ onLogin }) {
             }}
           >
             <ShieldCheck size={13} color={C.success} />
-            Demo environment
+            Supabase authentication
           </div>
         </header>
 
@@ -225,7 +795,7 @@ export default function Login({ onLogin }) {
                   maxWidth: 680,
                 }}
               >
-                Manage bookings, drivers, tracking, and billing in one operations portal.
+                Secure role-based access for parcel operations.
               </h1>
 
               <p
@@ -237,9 +807,9 @@ export default function Login({ onLogin }) {
                   maxWidth: 660,
                 }}
               >
-                SwiftRoute CRM gives dispatchers, drivers, and merchants a shared workflow
-                from parcel booking to assignment, pickup, in-transit tracking, delivery,
-                exceptions, and billing review.
+                Dispatchers, drivers, and merchants need separate access rules. This
+                app now supports sign in, merchant registration, forgot password,
+                reset password, and strict credential validation.
               </p>
 
               <div
@@ -254,19 +824,19 @@ export default function Login({ onLogin }) {
                   {
                     icon: BarChart3,
                     title: 'Dispatcher',
-                    text: 'Assign drivers, monitor status, and handle exceptions.',
+                    text: 'System-created access for operations and exception control.',
                     color: '#60A5FA',
                   },
                   {
                     icon: Truck,
                     title: 'Driver',
-                    text: 'View assigned jobs and update every delivery checkpoint.',
+                    text: 'System-created access tied to assigned driver jobs.',
                     color: C.accent,
                   },
                   {
                     icon: PackageCheck,
                     title: 'Merchant',
-                    text: 'Create bookings, track shipments, and review billing.',
+                    text: 'Self-registration for booking, tracking, and billing review.',
                     color: C.success,
                   },
                 ].map((item) => {
@@ -346,27 +916,25 @@ export default function Login({ onLogin }) {
                     }}
                   >
                     <Map size={14} color={C.accent} />
-                    Parcel Lifecycle
+                    Auth Coverage
                   </div>
 
                   <div style={{ display: 'flex', flexWrap: 'wrap', gap: 8 }}>
-                    {['Booked', 'Assigned', 'Picked Up', 'In Transit', 'Delivered'].map(
-                      (step) => (
-                        <span
-                          key={step}
-                          style={{
-                            background: C.card,
-                            borderRadius: 999,
-                            padding: '6px 10px',
-                            color: C.text,
-                            fontSize: 11,
-                            fontWeight: 700,
-                          }}
-                        >
-                          {step}
-                        </span>
-                      ),
-                    )}
+                    {['Login', 'Register', 'Forgot', 'Reset', 'Validation'].map((step) => (
+                      <span
+                        key={step}
+                        style={{
+                          background: C.card,
+                          borderRadius: 999,
+                          padding: '6px 10px',
+                          color: C.text,
+                          fontSize: 11,
+                          fontWeight: 700,
+                        }}
+                      >
+                        {step}
+                      </span>
+                    ))}
                   </div>
                 </div>
 
@@ -388,29 +956,27 @@ export default function Login({ onLogin }) {
                       marginBottom: 12,
                     }}
                   >
-                    Demo Coverage
+                    Strict Password Rules
                   </div>
 
-                  {[
-                    'Role-specific portals',
-                    'Driver assignment',
-                    'Merchant exception visibility',
-                  ].map((item) => (
-                    <div
-                      key={item}
-                      style={{
-                        display: 'flex',
-                        alignItems: 'center',
-                        gap: 8,
-                        color: C.text,
-                        fontSize: 12,
-                        marginBottom: 8,
-                      }}
-                    >
-                      <CheckCircle2 size={14} color={C.success} />
-                      {item}
-                    </div>
-                  ))}
+                  {['10+ chars', 'Upper + lower', 'Number + special', 'No email username'].map(
+                    (item) => (
+                      <div
+                        key={item}
+                        style={{
+                          display: 'flex',
+                          alignItems: 'center',
+                          gap: 8,
+                          color: C.text,
+                          fontSize: 12,
+                          marginBottom: 8,
+                        }}
+                      >
+                        <CheckCircle2 size={14} color={C.success} />
+                        {item}
+                      </div>
+                    ),
+                  )}
                 </div>
               </div>
             </div>
@@ -428,292 +994,8 @@ export default function Login({ onLogin }) {
               gap: 18,
             }}
           >
-            <form onSubmit={handleSubmit}>
-              <div style={{ marginBottom: 22 }}>
-                <div style={{ color: C.text, fontSize: 24, fontWeight: 900 }}>
-                  Sign in
-                </div>
-                <div style={{ color: C.muted, fontSize: 13, marginTop: 6, lineHeight: 1.6 }}>
-                  Select a demo account or enter credentials manually.
-                </div>
-              </div>
+            {renderCurrentForm()}
 
-              <label
-                style={{
-                  display: 'block',
-                  color: C.muted,
-                  fontSize: 11,
-                  fontWeight: 800,
-                  marginBottom: 7,
-                  textTransform: 'uppercase',
-                  letterSpacing: '0.08em',
-                }}
-              >
-                Demo account
-              </label>
-
-              <select
-                value={selectedAccountKey}
-                onChange={(event) => {
-                  const account = DEMO_ACCOUNTS.find(
-                    (item) => getAccountKey(item) === event.target.value,
-                  )
-
-                  if (account) selectAccount(account)
-                }}
-                style={{
-                  width: '100%',
-                  background: C.navy,
-                  border: C.border ? `1px solid ${C.border}` : 'none',
-                  borderRadius: 10,
-                  padding: '11px 12px',
-                  color: C.text,
-                  fontSize: 13,
-                  fontFamily: 'inherit',
-                  outline: 'none',
-                  marginBottom: 14,
-                }}
-              >
-                {Object.entries(groupedAccounts).map(([role, accounts]) => (
-                  <optgroup key={role} label={role.toUpperCase()}>
-                    {accounts.map((account) => (
-                      <option key={getAccountKey(account)} value={getAccountKey(account)}>
-                        {account.label}
-                      </option>
-                    ))}
-                  </optgroup>
-                ))}
-              </select>
-
-              <label
-                style={{
-                  display: 'block',
-                  color: C.muted,
-                  fontSize: 11,
-                  fontWeight: 800,
-                  marginBottom: 7,
-                  textTransform: 'uppercase',
-                  letterSpacing: '0.08em',
-                }}
-              >
-                Email
-              </label>
-
-              <div
-                style={{
-                  display: 'flex',
-                  alignItems: 'center',
-                  gap: 9,
-                  background: C.navy,
-                  border: C.border ? `1px solid ${C.border}` : 'none',
-                  borderRadius: 10,
-                  padding: '11px 12px',
-                  marginBottom: 14,
-                }}
-              >
-                <Mail size={15} color={C.muted} />
-                <input
-                  value={email}
-                  onChange={(event) => setEmail(event.target.value)}
-                  autoComplete="username"
-                  style={{
-                    flex: 1,
-                    background: 'transparent',
-                    border: 'none',
-                    outline: 'none',
-                    color: C.text,
-                    fontSize: 13,
-                    fontFamily: 'inherit',
-                  }}
-                />
-              </div>
-
-              <label
-                style={{
-                  display: 'block',
-                  color: C.muted,
-                  fontSize: 11,
-                  fontWeight: 800,
-                  marginBottom: 7,
-                  textTransform: 'uppercase',
-                  letterSpacing: '0.08em',
-                }}
-              >
-                Password
-              </label>
-
-              <div
-                style={{
-                  display: 'flex',
-                  alignItems: 'center',
-                  gap: 9,
-                  background: C.navy,
-                  border: C.border ? `1px solid ${C.border}` : 'none',
-                  borderRadius: 10,
-                  padding: '11px 12px',
-                  marginBottom: 14,
-                }}
-              >
-                <Lock size={15} color={C.muted} />
-                <input
-                  value={password}
-                  onChange={(event) => setPassword(event.target.value)}
-                  type="password"
-                  autoComplete="current-password"
-                  style={{
-                    flex: 1,
-                    background: 'transparent',
-                    border: 'none',
-                    outline: 'none',
-                    color: C.text,
-                    fontSize: 13,
-                    fontFamily: 'inherit',
-                  }}
-                />
-              </div>
-
-              {error && (
-                <div
-                  style={{
-                    background: 'rgba(239, 68, 68, 0.1)',
-                    border: '1px solid rgba(239, 68, 68, 0.35)',
-                    color: '#fecaca',
-                    borderRadius: 10,
-                    padding: '10px 12px',
-                    fontSize: 12,
-                    fontWeight: 700,
-                    marginBottom: 14,
-                  }}
-                >
-                  {error}
-                </div>
-              )}
-
-              <button
-                type="submit"
-                style={{
-                  width: '100%',
-                  border: 'none',
-                  borderRadius: 12,
-                  padding: '12px 14px',
-                  background: C.accent,
-                  color: '#04111f',
-                  fontSize: 13,
-                  fontWeight: 900,
-                  cursor: 'pointer',
-                  fontFamily: 'inherit',
-                  display: 'flex',
-                  alignItems: 'center',
-                  justifyContent: 'center',
-                  gap: 8,
-                }}
-              >
-                Sign In
-                <ArrowRight size={15} />
-              </button>
-
-              <button
-                type="button"
-                onClick={handleQuickEnter}
-                style={{
-                  width: '100%',
-                  border: C.border ? `1px solid ${C.border}` : 'none',
-                  borderRadius: 12,
-                  padding: '11px 14px',
-                  background: C.navy,
-                  color: C.text,
-                  fontSize: 13,
-                  fontWeight: 800,
-                  cursor: 'pointer',
-                  fontFamily: 'inherit',
-                  marginTop: 10,
-                }}
-              >
-                Enter as {selectedAccount.label}
-              </button>
-            </form>
-
-            <div
-              style={{
-                background: C.navy,
-                border: C.border ? `1px solid ${C.border}` : 'none',
-                borderRadius: 16,
-                padding: 16,
-              }}
-            >
-              <div
-                style={{
-                  display: 'flex',
-                  alignItems: 'center',
-                  gap: 10,
-                  marginBottom: 12,
-                }}
-              >
-                <div
-                  style={{
-                    width: 38,
-                    height: 38,
-                    borderRadius: 12,
-                    background: `${selectedAccount.color}18`,
-                    display: 'flex',
-                    alignItems: 'center',
-                    justifyContent: 'center',
-                    flexShrink: 0,
-                  }}
-                >
-                  <SelectedAccountIcon size={18} color={selectedAccount.color} />
-                </div>
-
-                <div>
-                  <div style={{ color: C.text, fontSize: 13, fontWeight: 900 }}>
-                    {selectedAccount.label}
-                  </div>
-                  <div style={{ color: C.muted, fontSize: 11 }}>
-                    {selectedAccount.email}
-                  </div>
-                </div>
-              </div>
-
-              <div style={{ color: C.muted, fontSize: 12, lineHeight: 1.6 }}>
-                {selectedAccount.desc}
-              </div>
-
-              {selectedAccount.email === 'ops@freshfarm.ph' && (
-                <div
-                  style={{
-                    marginTop: 12,
-                    background: 'rgba(251, 146, 60, 0.1)',
-                    border: '1px solid rgba(251, 146, 60, 0.35)',
-                    color: '#fed7aa',
-                    borderRadius: 10,
-                    padding: '9px 11px',
-                    fontSize: 11,
-                    fontWeight: 700,
-                    lineHeight: 1.5,
-                  }}
-                >
-                  Use this merchant to verify exception visibility in My Bookings.
-                </div>
-              )}
-
-              {selectedAccount.email === 'liza@swiftroute.ph' && (
-                <div
-                  style={{
-                    marginTop: 12,
-                    background: 'rgba(251, 146, 60, 0.1)',
-                    border: '1px solid rgba(251, 146, 60, 0.35)',
-                    color: '#fed7aa',
-                    borderRadius: 10,
-                    padding: '9px 11px',
-                    fontSize: 11,
-                    fontWeight: 700,
-                    lineHeight: 1.5,
-                  }}
-                >
-                  Use this driver to verify exception jobs in the Driver Portal.
-                </div>
-              )}
-            </div>
           </aside>
         </main>
 
@@ -727,7 +1009,7 @@ export default function Login({ onLogin }) {
             gap: 12,
           }}
         >
-          <span>Demo environment · Simulated data · SwiftRoute CRM v2.4</span>
+          <span>Production auth · Supabase session · SwiftRoute CRM v2.5</span>
           <span>Dispatcher · Driver · Merchant</span>
         </footer>
       </div>
