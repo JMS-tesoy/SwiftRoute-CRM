@@ -1,3 +1,4 @@
+import { getAuthErrorMessage } from '../features/auth/authErrors'
 import { supabase } from '../utils/supabase/client'
 
 function mapProfileToAppUser(user, profile) {
@@ -25,7 +26,7 @@ async function getProfileForUser(user) {
   if (error) {
     return {
       ok: false,
-      error: 'Your account exists, but no app profile was found. Please contact support.',
+      error: 'We could not load your account profile. Please try again or contact support.',
     }
   }
 
@@ -57,7 +58,7 @@ export async function loginWithEmailPassword(email, password) {
   if (error) {
     return {
       ok: false,
-      error: error.message || 'Invalid email or password.',
+      error: getAuthErrorMessage(error, 'Unable to sign in. Please check your email and password.'),
     }
   }
 
@@ -91,7 +92,14 @@ export async function registerMerchantAccount({
   if (error) {
     return {
       ok: false,
-      error: error.message || 'Unable to create account.',
+      error: getAuthErrorMessage(error),
+    }
+  }
+
+  if (data.user?.identities && data.user.identities.length === 0) {
+    return {
+      ok: false,
+      error: getAuthErrorMessage({ message: 'user already registered' }),
     }
   }
 
@@ -106,7 +114,7 @@ export async function registerMerchantAccount({
 }
 
 export async function createPasswordResetCode(email) {
-  const redirectTo = `${window.location.origin}/`
+  const redirectTo = `${window.location.origin}/auth/reset-password`
   const { error } = await supabase.auth.resetPasswordForEmail(email, {
     redirectTo,
   })
@@ -114,7 +122,10 @@ export async function createPasswordResetCode(email) {
   if (error) {
     return {
       ok: false,
-      error: error.message || 'Unable to send password reset email.',
+      error: getAuthErrorMessage(
+        error,
+        'We could not send the password reset email. Please wait a few minutes and try again.',
+      ),
     }
   }
 
@@ -132,13 +143,43 @@ export async function resetPassword({ newPassword }) {
   if (error) {
     return {
       ok: false,
-      error: error.message || 'Unable to reset password.',
+      error: getAuthErrorMessage(error, 'Unable to reset password. Please try again.'),
     }
   }
 
   return {
     ok: true,
   }
+}
+
+export async function verifyEmailUpdateToken(tokenHash) {
+  if (!tokenHash) {
+    return {
+      ok: false,
+      error: 'This email update link is missing a verification token.',
+    }
+  }
+
+  const { data, error } = await supabase.auth.verifyOtp({
+    token_hash: tokenHash,
+    type: 'email_change',
+  })
+
+  if (error) {
+    return {
+      ok: false,
+      error: getAuthErrorMessage(error, 'Unable to verify email update link. Please request a new link.'),
+    }
+  }
+
+  if (!data.user) {
+    return {
+      ok: true,
+      user: null,
+    }
+  }
+
+  return getProfileForUser(data.user)
 }
 
 export async function logoutUser() {

@@ -1,8 +1,10 @@
-import { useEffect, useState } from 'react'
+import { useEffect, useRef, useState } from 'react'
 import {
   ArrowRight,
   BarChart3,
   CheckCircle2,
+  Eye,
+  EyeOff,
   Lock,
   Mail,
   Map,
@@ -36,6 +38,8 @@ function Field({
   autoComplete,
 }) {
   const Icon = icon
+  const [isPasswordVisible, setIsPasswordVisible] = useState(false)
+  const isPasswordField = type === 'password'
 
   return (
     <div style={{ marginBottom: 14 }}>
@@ -69,7 +73,7 @@ function Field({
         <input
           value={value}
           onChange={(event) => onChange(event.target.value)}
-          type={type}
+          type={isPasswordField && isPasswordVisible ? 'text' : type}
           placeholder={placeholder}
           autoComplete={autoComplete}
           style={{
@@ -83,6 +87,28 @@ function Field({
             minWidth: 0,
           }}
         />
+
+        {isPasswordField && (
+          <button
+            type="button"
+            aria-label={isPasswordVisible ? 'Hide password' : 'Show password'}
+            title={isPasswordVisible ? 'Hide password' : 'Show password'}
+            onClick={() => setIsPasswordVisible((current) => !current)}
+            style={{
+              border: 'none',
+              background: 'transparent',
+              color: C.muted,
+              cursor: 'pointer',
+              padding: 2,
+              display: 'inline-flex',
+              alignItems: 'center',
+              justifyContent: 'center',
+              flexShrink: 0,
+            }}
+          >
+            {isPasswordVisible ? <EyeOff size={16} /> : <Eye size={16} />}
+          </button>
+        )}
       </div>
     </div>
   )
@@ -123,13 +149,14 @@ function MessageBox({ type = 'info', children }) {
   )
 }
 
-export default function Login({ onLogin }) {
+export default function Login({ onLogin, notice }) {
   const [mode, setMode] = useState('login')
   const [email, setEmail] = useState('')
   const [password, setPassword] = useState('')
   const [error, setError] = useState('')
   const [success, setSuccess] = useState('')
   const [isSubmitting, setIsSubmitting] = useState(false)
+  const isRegisteringRef = useRef(false)
 
   const [registerName, setRegisterName] = useState('')
   const [registerMerchantName, setRegisterMerchantName] = useState('')
@@ -152,6 +179,21 @@ export default function Login({ onLogin }) {
       setSuccess('Create a new password to finish your account recovery.')
     }
   }, [])
+
+  useEffect(() => {
+    if (!notice) return
+
+    setMode('login')
+
+    if (notice.type === 'error') {
+      setError(notice.message)
+      setSuccess('')
+      return
+    }
+
+    setSuccess(notice.message)
+    setError('')
+  }, [notice])
 
   const clearMessages = () => {
     setError('')
@@ -194,8 +236,12 @@ export default function Login({ onLogin }) {
 
   const handleRegister = async (event) => {
     event.preventDefault()
+
+    if (isRegisteringRef.current) return
+
     clearMessages()
     setIsSubmitting(true)
+    isRegisteringRef.current = true
 
     const nameError = validateName(registerName)
     const merchantNameError = validateMerchantName(registerMerchantName)
@@ -212,16 +258,28 @@ export default function Login({ onLogin }) {
     if (firstError) {
       setError(firstError)
       setIsSubmitting(false)
+      isRegisteringRef.current = false
       return
     }
 
-    const result = await registerMerchantAccount({
-      name: registerName,
-      merchantName: registerMerchantName,
-      email: registerEmail,
-      password: registerPassword,
-    })
-    setIsSubmitting(false)
+    let result
+
+    try {
+      result = await registerMerchantAccount({
+        name: registerName,
+        merchantName: registerMerchantName,
+        email: registerEmail,
+        password: registerPassword,
+      })
+    } catch {
+      result = {
+        ok: false,
+        error: 'Registration failed. Please check your details and try again.',
+      }
+    } finally {
+      setIsSubmitting(false)
+      isRegisteringRef.current = false
+    }
 
     if (!result.ok) {
       setError(result.error)
@@ -229,7 +287,7 @@ export default function Login({ onLogin }) {
     }
 
     if (result.needsEmailConfirmation) {
-      setSuccess('Account created. Check your email to verify your account before signing in.')
+      setSuccess('Account created. Please check your email to verify your account.')
       setMode('login')
       setEmail(registerEmail)
       setPassword('')
@@ -396,7 +454,7 @@ export default function Login({ onLogin }) {
             padding: 0,
           }}
         >
-          Register merchant account
+          Create merchant account
         </button>
       </div>
     </form>
@@ -409,7 +467,7 @@ export default function Login({ onLogin }) {
           Register merchant
         </div>
         <div style={{ color: C.muted, fontSize: 13, marginTop: 6, lineHeight: 1.6 }}>
-          Merchant self-registration is allowed. Dispatcher and driver accounts must be
+          Merchant self-registration is available. Dispatcher and driver accounts are
           created by the operations team.
         </div>
       </div>
@@ -481,7 +539,7 @@ export default function Login({ onLogin }) {
           fontFamily: 'inherit',
         }}
       >
-        {isSubmitting ? 'Creating Account...' : 'Create Merchant Account'}
+        {isSubmitting ? 'Creating account...' : 'Create Merchant Account'}
       </button>
 
       <button

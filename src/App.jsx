@@ -10,7 +10,11 @@ import DriverJobs from './features/driver/DriverJobs'
 import MerchantBilling from './features/merchant/MerchantBilling'
 import MerchantBookingHistory from './features/merchant/MerchantBookingHistory'
 import MerchantNewBooking from './features/merchant/MerchantNewBooking'
-import { getCurrentUser, logoutUser } from './services/supabaseAuthService'
+import {
+  getCurrentUser,
+  logoutUser,
+  verifyEmailUpdateToken,
+} from './services/supabaseAuthService'
 import { C, FONTS } from './styles/theme'
 import {
   PARCEL_STATUS,
@@ -35,6 +39,7 @@ const getUser = (auth,drivers) => {
 export default function App() {
   const [auth,setAuth]=useState(null);
   const [isAuthLoading,setIsAuthLoading]=useState(true);
+  const [authNotice,setAuthNotice]=useState(null);
   const [view,setView]=useState("");
   const [parcels,setParcels]=useState(SEED_PARCELS);
   const [drivers]=useState(DRIVERS);
@@ -43,10 +48,47 @@ export default function App() {
     let isMounted = true
     const url = new URL(window.location.href)
     const isPasswordRecovery =
-      url.hash.includes('type=recovery') || url.searchParams.get('type') === 'recovery'
+      url.pathname === '/auth/reset-password' ||
+      url.hash.includes('type=recovery') ||
+      url.searchParams.get('type') === 'recovery'
+    const isEmailUpdate = url.pathname === '/auth/email-update'
 
     if (isPasswordRecovery) {
       setIsAuthLoading(false)
+      return () => {
+        isMounted = false
+      }
+    }
+
+    if (isEmailUpdate) {
+      const tokenHash = url.searchParams.get('token_hash')
+
+      verifyEmailUpdateToken(tokenHash).then((result) => {
+        if (!isMounted) return
+
+        if (result.ok) {
+          setAuthNotice({
+            type: 'success',
+            title: 'Email updated',
+            message: 'Your email address has been verified and updated.',
+          })
+
+          if (result.user) {
+            setAuth(result.user)
+            setView(DEFAULT_VIEW[result.user.id] || "overview")
+          }
+        } else {
+          setAuthNotice({
+            type: 'error',
+            title: 'Email update failed',
+            message: result.error,
+          })
+        }
+
+        window.history.replaceState({}, document.title, '/')
+        setIsAuthLoading(false)
+      })
+
       return () => {
         isMounted = false
       }
@@ -122,7 +164,7 @@ const statusUp = (pid, nextStatus) => {
     );
   }
 
-  if(!auth) return <Login onLogin={login}/>;
+  if(!auth) return <Login onLogin={login} notice={authNotice}/>;
 
   const user=getUser(auth,drivers);
   const View=VIEWS[view];
